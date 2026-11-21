@@ -1,135 +1,132 @@
-# Тестовое задание Effective Mobile DevOps
+# Hardened Reverse-Proxy Microservice Template (Nginx + Python)
 
-Простое веб-приложение с обратным прокси-сервером (nginx), запущенное в Docker-контейнерах.
+Продакшн-шаблон веб-приложения с обратным прокси-сервером (Nginx) и изолированным Python-бэкендом, запущенный в Docker-контейнерах с усиленными настройками безопасности (non-root, read-only конфиги, изоляция сетей, healthchecks и CI smoke-тестами).
 
 ## Архитектура
 
-```
-Internet → nginx (порт 80) → backend (порт 8080)
+```text
+Internet → nginx (порт 80) → [isolated docker network] → backend (порт 8080)
 ```
 
-- **nginx**: Выступает в роли обратного прокси (reverse proxy), принимает внешние HTTP-запросы на 80 порту.
-- **backend**: Python HTTP-сервер, доступный только внутри сети Docker.
-- **Docker Network**: Изолированная сеть для взаимодействия между контейнерами.
+- **nginx**: Выступает в роли обратного прокси (reverse proxy), принимает внешние HTTP-запросы на 80 порту и проксирует их во внутреннюю сеть.
+- **backend**: Python HTTP-сервер, полностью закрытый от прямого доступа извне и доступный только внутри сети Docker.
+- **Docker Network**: Изолированная bridge-сеть для взаимодействия между контейнерами.
 
 ## Используемые технологии
 
-- Python 3.11 (модуль http.server)
-- Nginx 1.25-alpine
-- Docker и Docker Compose
-- Alpine Linux (минималистичные базовые образы)
+- **Python 3.11** (стандартная библиотека `http.server`)
+- **Nginx 1.25-alpine**
+- **Docker & Docker Compose v2**
+- **Alpine Linux** (минималистичные базовые образы)
+- **GitHub Actions** (автоматические smoke-тесты при пуше и PR)
 
 ## Быстрый запуск
 
 1. **Клонируйте репозиторий и перейдите в папку проекта:**
    ```bash
-   git clone <repository-url>
-   cd Effective-Mobile-devOPS-test
+   git clone https://github.com
+   cd hardened-nginx-python-template
    ```
 
-2. **Запустите приложение:**
+2. **Соберите и запустите приложение:**
    ```bash
-   docker-compose up -d
+   docker compose up -d --build
    ```
 
 3. **Проверьте результат:**
    ```bash
-   curl http://localhost
-   ```
-   Ожидаемый ответ:
-   ```
-   Hello from Effective Mobile!
+   curl -i http://localhost/nginx-health
+   curl -i http://localhost/
    ```
 
 ## Структура проекта
 
-```
+```text
+├── .github/
+│   └── workflows/
+│       └── ci.yml           # CI пайплайн (валидация и smoke-тесты)
 ├── backend/
-│   ├── Dockerfile          # Определение контейнера бэкенда
-│   └── app.py             # HTTP-сервер на Python
+│   ├── Dockerfile           # Сборка контейнера бэкенда с non-root пользователем
+│   └── app.py               # HTTP-сервер на Python
 ├── nginx/
-│   └── nginx.conf         # Конфигурация прокси-сервера Nginx
-├── docker-compose.yml      # Оркестрация сервисов
-├── README.md              # Этот файл
-└── .gitignore            # Правила исключения файлов Git
+│   └── nginx.conf           # Конфигурация прокси-сервера Nginx
+├── proofs/                  # Логи и скриншоты проверки работоспособности
+├── docker-compose.yml       # Оркестрация сервисов, сети и healthchecks
+├── README.md                # Документация проекта
+└── .gitignore               # Правила исключения файлов Git
 ```
 
 ## Подробные инструкции
 
 ### Системные требования
-- Установленный и запущенный Docker
-- Установленный Docker Compose
+- Установленный и запущенный **Docker Engine**
+- Плагин **Docker Compose v2** (`docker compose`)
 
 ### Управление приложением
 
 1. **Сборка и запуск сервисов:**
    ```bash
-   docker-compose up -d --build
+   docker compose up -d --build
    ```
 
-2. **Проверка статуса сервисов:**
+2. **Проверка статуса и здоровья сервисов:**
    ```bash
-   docker-compose ps
+   docker compose ps
    ```
 
-3. **Просмотр логов:**
+3. **Просмотр логов в реальном времени:**
    ```bash
-   docker-compose logs -f
+   docker compose logs -f
    ```
 
-4. **Остановка сервисов:**
+4. **Остановка и удаление контейнеров:**
    ```bash
-   docker-compose down
+   docker compose down
    ```
 
-### Проверка состояния (Health Checks)
+### Проверка состояния (Health Checks) и CI/CD
 
 Оба сервиса включают автоматическую проверку работоспособности:
+- **Backend health check**: Проверяет доступность порта `8080` внутри контейнера.
+- **Nginx health check**: Проверяет служебный эндпоинт `/nginx-health`.
 
-- **Backend health check**: Проверяет доступность порта 8080 внутри контейнера.
-- **Nginx health check**: Проверяет эндпоинт `/nginx-health`.
+При каждом `push` или `pull_request` в ветку `main` GitHub Actions автоматически валидирует `docker-compose.yml`, поднимает окружение, дожидается статуса `healthy` у обоих сервисов и проверяет HTTP-ответы эндпоинтов.
 
-Статус проверок можно увидеть в выводе команды:
-```bash
-docker-compose ps
-```
+### Меры безопасности (Container Hardening)
 
-### Меры безопасности
+- **Запуск не от root**: Процесс бэкенда работает под непривилегированным системным пользователем (`appuser`).
+- **Минимальная поверхность атаки**: Используются легковесные образы на базе Alpine Linux без лишних утилит.
+- **Сетевая изоляция**: Порт бэкенда (`8080`) не проброшен на хост-машину — доступ возможен только через Nginx.
+- **Конфигурации только для чтения**: Конфиг Nginx монтируется внутрь контейнера с флагом `:ro` (read-only).
 
-- **Запуск не от root**: Бэкенд работает под ограниченным пользователем (`appuser`).
-- **Минимальные образы**: Используются Alpine-версии для уменьшения поверхности атаки.
-- **Сетевая изоляция**: Бэкенд доступен только через nginx.
-- **Конфигурации только для чтения**: Конфиг Nginx монтируется с флагом `ro` (read-only).
+### Устранение неполадок (Troubleshooting)
 
-### Устранение неполадок
-
-1. **Порт 80 уже занят:**
+1. **Порт 80 на хосте уже занят:**
    ```bash
    # Проверить, какой процесс занимает порт 80
-   netstat -tulpn | grep :80
-   # Или изменить порт в docker-compose.yml в секции nginx.ports
+   sudo ss -tulpn | grep :80
+   # Либо изменить внешний порт в docker-compose.yml в секции nginx.ports (например, "8081:80")
    ```
 
-2. **Бэкенд не отвечает:**
+2. **Бэкенд не отвечает (502 Bad Gateway):**
    ```bash
-   # Проверить логи бэкенда
-   docker-compose logs backend
-   # Проверить связь напрямую из контейнера nginx
-   docker-compose exec nginx wget -qO- http://backend:8080
+   # Проверить логи и причину ошибки бэкенда
+   docker compose logs backend
+   # Проверить сетевую связность напрямую из контейнера nginx
+   docker compose exec nginx wget -qO- http://backend:8080
    ```
 
-3. **Проблемы с конфигурацией Nginx:**
+3. **Ошибка после правки конфигурации Nginx:**
    ```bash
-   # Протестировать синтаксис конфига
-   docker-compose exec nginx nginx -t
-   # Перезагрузить nginx без остановки контейнера
-   docker-compose exec nginx nginx -s reload
+   # Протестировать синтаксис конфига перед перезагрузкой
+   docker compose exec nginx nginx -t
+   # Бесшовная перезагрузка nginx без остановки контейнера
+   docker compose exec nginx nginx -s reload
    ```
 
-## Заметки по разработке
+## Архитектурные заметки
 
-- Бэкенд слушает порт 8080 внутри сети Docker.
-- На хост-машину пробрасывается только 80 порт Nginx.
-- Контейнеры имеют кастомные имена для удобства идентификации.
-- Настроены зависимости запуска (`depends_on`): nginx ждет, пока бэкенд станет «здоров» (healthy).
-- Все сервисы автоматически перезапускаются в случае сбоя (`restart: unless-stopped`).
+- Бэкенд слушает порт `8080` исключительно внутри изолированной сети Docker.
+- На хост-машину пробрасывается только `80` порт Nginx.
+- Настроена строгая очередность запуска (`depends_on` с условием `condition: service_healthy`): Nginx стартует только после того, как бэкенд пройдет healthcheck.
+- Для обоих сервисов задана политика перезапуска `restart: unless-stopped` для автоматического восстановления при сбоях.
