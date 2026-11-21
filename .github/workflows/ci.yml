@@ -1,0 +1,41 @@
+name: Docker Compose Smoke Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate Compose config
+        run: docker compose config -q
+
+      - name: Build and start services
+        run: docker compose up -d --build
+
+      - name: Wait for healthy status
+        run: |
+          for i in {1..15}; do
+            if [ "$(docker compose ps --format json | grep -c '"Health":"healthy"')" -eq 2 ]; then
+              echo "Both services are healthy!"
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose logs
+          exit 1
+
+      - name: Test HTTP endpoints
+        run: |
+          curl -f http://localhost/nginx-health
+          curl -f http://localhost/
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
