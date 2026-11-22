@@ -22,22 +22,19 @@ jobs:
       - name: Wait for healthy status
         run: |
           echo "Waiting for services to become healthy..."
-          for i in {1..25}; do
-            ALL_HEALTHY=true
-            for id in $(docker compose ps -q); do
-              STATUS=$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}no_healthcheck{{end}}' $id)
-              if [ "$STATUS" != "healthy" ]; then
-                ALL_HEALTHY=false
-              fi
-            done
+          # Ждем суммарно до 60 секунд (30 попыток по 2 секунды)
+          for i in {1..30}; do
+            # Проверяем вывод docker compose ps на наличие слова "healthy" для обоих сервисов
+            HEALTHY_COUNT=$(docker compose ps --status=healthy --format "{{.Service}}" | wc -l)
             
-            if [ "$ALL_HEALTHY" = true ]; then
-              echo "All services are healthy!"
+            echo "Attempt $i/30: Healthy services count = $HEALTHY_COUNT (need 2)"
+            
+            if [ "$HEALTHY_COUNT" -eq 2 ]; then
+              echo "Both services are healthy!"
               exit 0
             fi
             
-            echo "Attempt $i/25: Services are starting..."
-            sleep 3
+            sleep 2
           done
           
           echo "Timeout reached! Printing container logs for debugging:"
