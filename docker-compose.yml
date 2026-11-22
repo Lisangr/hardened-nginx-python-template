@@ -9,10 +9,10 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import socket; socket.create_connection(('localhost', 8080), timeout=1)"]
-      interval: 30s
-      timeout: 10s
+      interval: 10s
+      timeout: 5s
       retries: 3
-      start_period: 10s
+      start_period: 15s
 
   nginx:
     image: nginx:1.25-alpine
@@ -28,11 +28,11 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/nginx-health"]
-      interval: 30s
-      timeout: 10s
+      test: ["CMD", "wget", "-qO-", "http://localhost/nginx-health"]
+      interval: 10s
+      timeout: 5s
       retries: 3
-      start_period: 10s
+      start_period: 15s
 
 networks:
   app-network:
