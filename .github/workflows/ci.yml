@@ -19,33 +19,32 @@ jobs:
       - name: Build and start services
         run: docker compose up -d --build
 
-      - name: Wait for healthy status
+      - name: Wait for services to start
         run: |
-          echo "Waiting for services to become healthy..."
-          # Ждем суммарно до 60 секунд (30 попыток по 2 секунды)
-          for i in {1..30}; do
-            # Проверяем вывод docker compose ps на наличие слова "healthy" для обоих сервисов
-            HEALTHY_COUNT=$(docker compose ps --status=healthy --format "{{.Service}}" | wc -l)
-            
-            echo "Attempt $i/30: Healthy services count = $HEALTHY_COUNT (need 2)"
-            
-            if [ "$HEALTHY_COUNT" -eq 2 ]; then
-              echo "Both services are healthy!"
-              exit 0
+          echo "Waiting for services to respond..."
+          # Ждем до 30 секунд, пока веб-серверы начнут отвечать
+          for i in {1..15}; do
+            if curl -s http://localhost/nginx-health | grep -q "healthy"; then
+              echo "Nginx is up and healthy!"
+              break
             fi
-            
+            echo "Attempt $i/15: Nginx is not ready yet..."
             sleep 2
           done
-          
-          echo "Timeout reached! Printing container logs for debugging:"
-          docker compose logs
-          exit 1
 
       - name: Test HTTP endpoints
         run: |
-          curl -f http://localhost/nginx-health
-          curl -f http://localhost/
+          echo "Testing /nginx-health:"
+          curl -v -f http://localhost/nginx-health
+          
+          echo "Testing root /:"
+          curl -v -f http://localhost/
 
       - name: Tear down
         if: always()
-        run: docker compose down -v
+        run: |
+          if [ ${{ job.status }} == 'failure' ]; then
+            echo "Printing container logs due to failure:"
+            docker compose logs
+          fi
+          docker compose down -v
