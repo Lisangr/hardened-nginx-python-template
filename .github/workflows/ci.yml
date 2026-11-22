@@ -43,7 +43,7 @@ jobs:
       - name: Tear down
         if: always()
         run: |
-          if [ ${{ job.status }} == 'failure' ]; then
+          if [ "${{ job.status }}" == 'failure' ]; then
             echo "Printing container logs due to failure:"
             docker compose logs
           fi
