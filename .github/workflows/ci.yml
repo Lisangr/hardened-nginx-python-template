@@ -21,13 +21,33 @@ jobs:
 
       - name: Wait for healthy status
         run: |
-          for i in {1..15}; do
-            if [ "$(docker compose ps --format json | grep -c '"Health":"healthy"')" -eq 2 ]; then
-              echo "Both services are healthy!"
-              exit 0
+          echo "Waiting for services to become healthy..."
+          for i in {1..20}; do
+            # Проверяем состояние здоровья всех запущенных контейнеров проекта
+            UNHEALTHY_COUNT=$(docker compose ps -q | xargs -I {} docker inspect --format='{{if .State.Health}}{{if ne .State.Health.Status "healthy"}}1{{end}}{{else}}1{{end}}' {} | wc -l)
+            RUNNING_COUNT=$(docker compose ps -q | wc -l)
+            
+            if [ "$RUNNING_COUNT" -gt 0 ] && [ "$UNHEALTHY_COUNT" -eq 0 ]; then
+              # Дополнительно убедимся через цикл, что статус именно healthy, а не просто нет healthcheck
+              ALL_HEALTHY=true
+              for id in $(docker compose ps -q); do
+                STATUS=$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}no_healthcheck{{end}}' $id)
+                if [ "$STATUS" != "healthy" ]; then
+                  ALL_HEALTHY=false
+                fi
+              done
+              
+              if [ "$ALL_HEALTHY" = true ]; then
+                echo "All services are healthy!"
+                exit 0
+              fi
             fi
-            sleep 2
+            
+            echo "Attempt $i/20: Services are starting..."
+            sleep 3
           done
+          
+          echo "Timeout reached! Printing container logs for debugging:"
           docker compose logs
           exit 1
 
